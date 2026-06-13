@@ -7,7 +7,10 @@ export default function Members() {
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ full_name:'', phone:'', email:'', address:'', upi_id:'' })
+  const [form, setForm] = useState({
+    full_name: '', phone: '', email: '',
+    address: '', upi_id: '', contribution: ''
+  })
 
   useEffect(() => { loadMembers() }, [])
 
@@ -19,9 +22,56 @@ export default function Members() {
 
   async function addMember(e) {
     e.preventDefault()
-    const { error } = await supabase.from('members').insert([form])
-    if (error) toast.error(error.message)
-    else { toast.success('Member added!'); setShowForm(false); setForm({ full_name:'', phone:'', email:'', address:'', upi_id:'' }); loadMembers() }
+
+    // 1. Insert member
+    const { data: member, error } = await supabase
+      .from('members')
+      .insert([{
+        full_name: form.full_name,
+        phone: form.phone,
+        email: form.email,
+        address: form.address,
+        upi_id: form.upi_id,
+      }])
+      .select()
+      .single()
+
+    if (error) { toast.error(error.message); return }
+
+    // 2. If contribution amount entered, record it
+    if (form.contribution && parseFloat(form.contribution) > 0) {
+      // Add to contributions table
+      const { error: contribError } = await supabase.from('contributions').insert([{
+        member_id: member.id,
+        amount: parseFloat(form.contribution),
+        payment_mode: 'Cash',
+        notes: 'Initial contribution on joining',
+      }])
+      if (contribError) toast.error('Member added but contribution failed: ' + contribError.message)
+
+      // Add to transactions table (updates fund balance)
+      const { data: lastTxn } = await supabase
+        .from('transactions')
+        .select('balance_after')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      const prevBalance = lastTxn?.balance_after || 0
+      await supabase.from('transactions').insert([{
+        txn_type: 'contribution',
+        member_id: member.id,
+        amount: parseFloat(form.contribution),
+        direction: 'I',
+        balance_after: prevBalance + parseFloat(form.contribution),
+        notes: `Contribution from ${form.full_name}`,
+      }])
+    }
+
+    toast.success('Member added successfully!')
+    setShowForm(false)
+    setForm({ full_name: '', phone: '', email: '', address: '', upi_id: '', contribution: '' })
+    loadMembers()
   }
 
   return (
@@ -41,19 +91,57 @@ export default function Members() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h2 className="font-semibold mb-4">New Member</h2>
           <form onSubmit={addMember} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[['full_name','Full Name','text',true],['phone','Phone Number','tel',true],
-              ['email','Email','email',false],['upi_id','UPI / PhonePe Number','text',false],
-              ['address','Address','text',false]].map(([field, label, type, required]) => (
-              <div key={field} className={field === 'address' ? 'md:col-span-2' : ''}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-                <input type={type} required={required} value={form[field]}
-                  onChange={e => setForm({...form, [field]: e.target.value})}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-            ))}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+              <input type="text" required value={form.full_name}
+                onChange={e => setForm({...form, full_name: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number *</label>
+              <input type="tel" required value={form.phone}
+                onChange={e => setForm({...form, phone: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input type="email" value={form.email}
+                onChange={e => setForm({...form, email: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">UPI / PhonePe Number</label>
+              <input type="text" value={form.upi_id}
+                onChange={e => setForm({...form, upi_id: e.target.value})}
+                placeholder="e.g. 9876543210 or name@upi"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Initial Contribution (₹)
+                <span className="ml-1 text-xs text-gray-400 font-normal">— adds to fund balance</span>
+              </label>
+              <input type="number" min="0" value={form.contribution}
+                onChange={e => setForm({...form, contribution: e.target.value})}
+                placeholder="e.g. 4000"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 border-green-300 focus:ring-green-500" />
+              <p className="text-xs text-green-600 mt-1">This amount will be added to the total fund balance</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+              <input type="text" value={form.address}
+                onChange={e => setForm({...form, address: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
             <div className="md:col-span-2 flex gap-3">
-              <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm hover:bg-indigo-700">Save Member</button>
-              <button type="button" onClick={() => setShowForm(false)} className="border border-gray-300 px-6 py-2 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+              <button type="submit"
+                className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm hover:bg-indigo-700">
+                Save Member
+              </button>
+              <button type="button" onClick={() => setShowForm(false)}
+                className="border border-gray-300 px-6 py-2 rounded-lg text-sm hover:bg-gray-50">
+                Cancel
+              </button>
             </div>
           </form>
         </div>
@@ -78,7 +166,8 @@ export default function Members() {
                     <td className="px-4 py-3 text-gray-500">{m.upi_id || '—'}</td>
                     <td className="px-4 py-3 text-gray-500">{new Date(m.joined_date).toLocaleDateString('en-IN')}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${m.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium
+                        ${m.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {m.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>

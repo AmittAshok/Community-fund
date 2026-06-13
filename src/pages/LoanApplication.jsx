@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import SignatureCanvas from 'react-signature-canvas'
+import SignaturePad from '../components/SignaturePad'
 import toast from 'react-hot-toast'
 import { Phone, Building2, RotateCcw } from 'lucide-react'
 
@@ -90,8 +90,8 @@ export default function LoanApplication() {
         </button>
       </div>
       <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
-        <SignatureCanvas ref={sigRef} penColor="#1e1b4b"
-          canvasProps={{ width: 500, height: 150, className: 'w-full rounded-lg' }} />
+        <SignaturePad ref={sigRef}
+          />
       </div>
       <p className="text-xs text-gray-400 mt-1">Sign inside the box using mouse or touch</p>
     </div>

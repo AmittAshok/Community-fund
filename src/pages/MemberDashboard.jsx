@@ -84,7 +84,7 @@ export default function MemberDashboard() {
       <div className="bg-indigo-900 text-white rounded-2xl p-5">
         <p className="text-indigo-300 text-sm">Welcome back,</p>
         <h1 className="text-2xl font-bold mt-1">{member?.full_name}</h1>
-        <p className="text-indigo-300 text-sm mt-1">{member?.phone} · Member since {new Date(member?.joined_date).toLocaleDateString('en-IN')}</p>
+        <p className="text-indigo-300 text-sm mt-1">{member?.phone} · Member since {member?.joined_date ? new Date(member.joined_date).toLocaleDateString('en-IN') : 'N/A'}</p>
       </div>
 
       {/* Fund info (public) */}
@@ -152,9 +152,9 @@ export default function MemberDashboard() {
                   </div>
                   <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
                     <p><span className="text-gray-400">Purpose:</span> {loan.purpose}</p>
-                    <p className="mt-1"><span className="text-gray-400">Applied:</span> {new Date(loan.applied_date).toLocaleDateString('en-IN')}</p>
+                    <p className="mt-1"><span className="text-gray-400">Applied:</span> {new Date(loan.applied_date).toLocaleDateString('en-IN') : 'N/A'}</p>
                     {loan.disbursed_date && (
-                      <p className="mt-1"><span className="text-gray-400">Disbursed:</span> {new Date(loan.disbursed_date).toLocaleDateString('en-IN')}</p>
+                      <p className="mt-1"><span className="text-gray-400">Disbursed:</span> {new Date(loan.disbursed_date).toLocaleDateString('en-IN') : 'N/A'}</p>
                     )}
                   </div>
                   {loan.status === 'active' && (
@@ -200,7 +200,7 @@ export default function MemberDashboard() {
               <div key={p.id} className="px-5 py-3 flex items-center justify-between text-sm">
                 <div>
                   <p className="font-medium capitalize">{p.payment_type.replace('_',' ')}</p>
-                  <p className="text-xs text-gray-400">{new Date(p.payment_date).toLocaleDateString('en-IN')} · {p.payment_mode}</p>
+                  <p className="text-xs text-gray-400">{new Date(p.payment_date).toLocaleDateString('en-IN') : 'N/A'} · {p.payment_mode}</p>
                 </div>
                 <span className="font-semibold text-green-600">{fmt(p.amount)}</span>
               </div>

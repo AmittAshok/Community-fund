@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { IndianRupee } from 'lucide-react'
+import { IndianRupee, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function Login() {
@@ -13,9 +13,27 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) { toast.error(error.message); setLoading(false) }
-    else { toast.success('Welcome back!'); navigate('/') }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) { toast.error(error.message); setLoading(false); return }
+
+    // Check profile role and status
+    const { data: profile } = await supabase
+      .from('profiles').select('*').eq('id', data.user.id).single()
+
+    if (profile?.status === 'pending') {
+      await supabase.auth.signOut()
+      toast.error('Your account is pending admin approval')
+      setLoading(false); return
+    }
+    if (profile?.status === 'rejected') {
+      await supabase.auth.signOut()
+      toast.error('Your account has been rejected. Contact admin.')
+      setLoading(false); return
+    }
+
+    toast.success('Welcome back!')
+    if (profile?.role === 'admin') navigate('/')
+    else navigate('/member')
   }
 
   return (
@@ -33,7 +51,7 @@ export default function Login() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="admin@example.com" />
+              placeholder="your@email.com" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
@@ -46,6 +64,13 @@ export default function Login() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+        <div className="mt-6 pt-6 border-t border-gray-100 text-center">
+          <p className="text-sm text-gray-500 mb-3">New member of the community fund?</p>
+          <Link to="/register"
+            className="flex items-center justify-center gap-2 w-full border-2 border-indigo-200 text-indigo-600 font-medium py-2.5 rounded-lg hover:bg-indigo-50 transition-colors">
+            <UserPlus className="w-4 h-4" /> Register as Member
+          </Link>
+        </div>
       </div>
     </div>
   )

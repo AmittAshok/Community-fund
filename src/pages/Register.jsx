@@ -9,22 +9,16 @@ export default function Register() {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [form, setForm] = useState({
-    full_name: '', phone: '', email: '',
-    password: '', confirm_password: '', address: '', upi_id: ''
+    full_name: '', phone: '', address: '', upi_id: ''
   })
   const [errors, setErrors] = useState({})
 
   const validate = () => {
     const e = {}
     if (!form.full_name.trim()) e.full_name = 'Full name is required'
-    else if (!/^[a-zA-Z\s]{3,}$/.test(form.full_name.trim())) e.full_name = 'Enter valid full name (letters only)'
-    if (!form.phone.trim()) e.phone = 'Phone is required'
+    else if (!/^[a-zA-Z\s]{3,}$/.test(form.full_name.trim())) e.full_name = 'Letters only, min 3 characters'
+    if (!form.phone.trim()) e.phone = 'Phone number is required'
     else if (!/^[6-9]\d{9}$/.test(form.phone.trim())) e.phone = 'Enter valid 10-digit Indian mobile number'
-    if (!form.email.trim()) e.email = 'Email is required'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Enter valid email'
-    if (!form.password) e.password = 'Password is required'
-    else if (form.password.length < 6) e.password = 'Password must be at least 6 characters'
-    if (form.password !== form.confirm_password) e.confirm_password = 'Passwords do not match'
     return e
   }
 
@@ -33,38 +27,49 @@ export default function Register() {
     const errs = validate()
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
-
     setLoading(true)
     try {
-      // Sign up with Supabase Auth
+      // Use phone as email: 91XXXXXXXXXX@communityfund.local
+      const fakeEmail = `91${form.phone.trim()}@communityfund.local`
+      const defaultPassword = `CF${form.phone.trim()}@fund`
+
       const { data, error } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
+        email: fakeEmail,
+        password: defaultPassword,
         options: {
-          data: { full_name: form.full_name, role: 'member' }
+          data: { full_name: form.full_name.trim(), role: 'member', phone: form.phone.trim() }
         }
       })
-      if (error) throw error
+      if (error) {
+        if (error.message.includes('already')) toast.error('This phone number is already registered')
+        else toast.error(error.message)
+        setLoading(false); return
+      }
 
-      // Create member record
+      // Add to members table (inactive until approved)
       await supabase.from('members').insert([{
         full_name: form.full_name.trim(),
         phone: form.phone.trim(),
-        email: form.email.trim(),
+        email: fakeEmail,
         address: form.address.trim() || null,
         upi_id: form.upi_id.trim() || null,
-        is_active: false, // inactive until admin approves
+        is_active: false,
       }])
 
-      // Update profile with phone
-      await supabase.from('profiles')
-        .update({ phone: form.phone.trim(), full_name: form.full_name.trim() })
-        .eq('id', data.user.id)
+      // Update profile
+      if (data.user) {
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          full_name: form.full_name.trim(),
+          phone: form.phone.trim(),
+          role: 'member',
+          status: 'pending',
+        })
+      }
 
       setDone(true)
     } catch (err) {
-      if (err.message.includes('unique')) toast.error('Email already registered')
-      else toast.error(err.message)
+      toast.error(err.message)
     } finally { setLoading(false) }
   }
 
@@ -72,11 +77,27 @@ export default function Register() {
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-indigo-700 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
         <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="text-3xl">✓</span>
+          <span className="text-4xl">✓</span>
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Registration Submitted!</h2>
+        <div className="bg-indigo-50 rounded-xl p-4 mb-6 text-left space-y-2">
+          <p className="text-sm font-medium text-indigo-900">Your login details:</p>
+          <div className="text-sm space-y-1">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Mobile</span>
+              <span className="font-mono font-medium">{form.phone}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Password</span>
+              <span className="font-mono font-medium">CF{form.phone}@fund</span>
+            </div>
+          </div>
+          <p className="text-xs text-indigo-500 mt-2">
+            Save these details. You can login once admin approves your account.
+          </p>
+        </div>
         <p className="text-gray-500 text-sm mb-6">
-          Your registration is pending admin approval. You will be able to login once the admin approves your account.
+          Admin will review and approve your registration. You'll be notified when approved.
         </p>
         <Link to="/login"
           className="flex items-center justify-center gap-2 w-full bg-indigo-600 text-white font-medium py-2.5 rounded-lg hover:bg-indigo-700">
@@ -94,49 +115,48 @@ export default function Register() {
             <IndianRupee className="w-8 h-8 text-indigo-600" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Join Community Fund</h1>
-          <p className="text-gray-500 text-sm mt-1">Fill in your details to register</p>
+          <p className="text-gray-500 text-sm mt-1">Register with your mobile number</p>
         </div>
         <form onSubmit={handleRegister} className="space-y-4">
-          {[
-            ['full_name','Full Name','text','e.g. Rajesh Kumar'],
-            ['phone','Phone Number','tel','10-digit mobile number'],
-            ['email','Email Address','email','your@email.com'],
-            ['upi_id','UPI / PhonePe Number','text','optional — name@upi or 10 digits'],
-            ['address','Address','text','optional'],
-          ].map(([field, label, type, placeholder]) => (
-            <div key={field}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-              <input type={type} value={form[field]} placeholder={placeholder}
-                onChange={e => setForm({...form, [field]: e.target.value})}
-                className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2
-                  ${errors[field] ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-indigo-500'}`} />
-              {errors[field] && <p className="text-xs text-red-500 mt-1">⚠ {errors[field]}</p>}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+            <input type="text" value={form.full_name} placeholder="e.g. Rajesh Kumar"
+              onChange={e => setForm({...form, full_name: e.target.value})}
+              className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2
+                ${errors.full_name ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-indigo-500'}`} />
+            {errors.full_name && <p className="text-xs text-red-500 mt-1">⚠ {errors.full_name}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number *</label>
+            <div className="flex gap-2">
+              <span className="flex items-center px-3 bg-gray-100 border border-gray-300 rounded-lg text-sm text-gray-500">+91</span>
+              <input type="tel" value={form.phone} placeholder="10-digit mobile number"
+                onChange={e => setForm({...form, phone: e.target.value.replace(/\D/g,'')})}
+                maxLength={10}
+                className={`flex-1 border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2
+                  ${errors.phone ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-indigo-500'}`} />
             </div>
-          ))}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input type="password" value={form.password}
-              onChange={e => setForm({...form, password: e.target.value})}
-              placeholder="minimum 6 characters"
-              className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2
-                ${errors.password ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-indigo-500'}`} />
-            {errors.password && <p className="text-xs text-red-500 mt-1">⚠ {errors.password}</p>}
+            {errors.phone && <p className="text-xs text-red-500 mt-1">⚠ {errors.phone}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-            <input type="password" value={form.confirm_password}
-              onChange={e => setForm({...form, confirm_password: e.target.value})}
-              placeholder="repeat password"
-              className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2
-                ${errors.confirm_password ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-indigo-500'}`} />
-            {errors.confirm_password && <p className="text-xs text-red-500 mt-1">⚠ {errors.confirm_password}</p>}
+            <label className="block text-sm font-medium text-gray-700 mb-1">UPI / PhonePe Number <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input type="text" value={form.upi_id} placeholder="name@upi or 10-digit number"
+              onChange={e => setForm({...form, upi_id: e.target.value})}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
-            Your registration will be reviewed by the admin before you can login.
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Address <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input type="text" value={form.address} placeholder="your address"
+              onChange={e => setForm({...form, address: e.target.value})}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+            Your login password will be auto-generated as: <strong>CF[mobilenumber]@fund</strong><br/>
+            e.g. for 9876543210 → <strong>CF9876543210@fund</strong>
           </div>
           <button type="submit" disabled={loading}
             className="w-full bg-indigo-600 text-white font-medium py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
-            {loading ? 'Submitting...' : 'Submit Registration'}
+            {loading ? 'Submitting...' : 'Register'}
           </button>
           <Link to="/login" className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-indigo-600">
             <ArrowLeft className="w-4 h-4" /> Back to Login
